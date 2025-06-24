@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "33349924340",
+    "project_id": "rakta-setu",
+    "storage_bucket": "rakta-setu.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:33349924340:android:17e0a50c3c24e462a6f5a1",
+        "android_client_info": {
+          "package_name": "com.projectorysolutions.raktasetu.rakta_setu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAESJ-rJZPbibLoMbp9ue1vjkDWAOFHuIE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

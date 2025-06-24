@@ -1,0 +1,35 @@
+{
+    "name": "rakta_setu",
+    "short_name": "rakta_setu",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0175C2",
+    "theme_color": "#0175C2",
+    "description": "Rakta Setu is a cross-platform blood bank management application designed to bridge the gap between blood donors, recipients, and healthcare providers. Built with Flutter, the app streamlines donor registration, blood availability tracking, and emergency requests — ensuring fast and efficient blood donations when lives depend on it. Developed by Projectory Solutions, Rakta Setu aims to create a reliable and responsive digital platform to save lives through smarter blood management.",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
