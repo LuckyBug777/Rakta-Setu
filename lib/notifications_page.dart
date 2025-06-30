@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'auth_service.dart';
+import 'emergency_response_handler.dart';
 
 class NotificationsPage extends StatefulWidget {
   final AuthService? authService;
@@ -411,10 +412,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
+          borderRadius: BorderRadius.circular(16),          onTap: () async {
             if (!isRead) {
               _markAsRead(notification['id']);
+            }
+            
+            // Handle emergency request notifications
+            if (notificationType == 'emergency_request') {
+              await EmergencyResponseHandler.showEmergencyRequestDialog(
+                context, 
+                notification
+              );
             }
           },
           child: Padding(

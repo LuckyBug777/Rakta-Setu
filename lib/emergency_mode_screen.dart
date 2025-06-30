@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:async';
+import 'auth_service.dart';
 
 class EmergencyModeScreen extends StatefulWidget {
   const EmergencyModeScreen({Key? key}) : super(key: key);
@@ -12,13 +16,22 @@ class _EmergencyModeScreenState extends State<EmergencyModeScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  int _nearbyDonorsCount = 0;
-  Timer? _donorCountTimer;
   final List<Map<String, dynamic>> _nearbyDonors = [];
-
+  final AuthService _authService = AuthService();  String _currentUserPhone = '';
+  String _currentUserDistrict = '';
+  String _currentUserBloodGroup = '';
+  String _currentUserName = '';
+  bool _isLoading = true;
+  StreamSubscription<QuerySnapshot>? _donorSubscription;
+  StreamSubscription<QuerySnapshot>? _emergencyRequestSubscription;
   @override
   void initState() {
     super.initState();
+    _initializeAnimations();
+    _loadCurrentUserData();
+  }
+
+  void _initializeAnimations() {
     // Initialize pulse animation
     _pulseController = AnimationController(
       duration: const Duration(seconds: 2),
@@ -39,47 +52,273 @@ class _EmergencyModeScreenState extends State<EmergencyModeScreen>
       });
 
     _pulseController.forward();
-
-    // Simulate finding nearby donors
-    _simulateNearbyDonors();
   }
-
-  void _simulateNearbyDonors() {
-    // Simulate finding donors every 3 seconds
-    _donorCountTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (_nearbyDonorsCount < 12) {
-        // Cap at 12 donors
+  Future<void> _loadCurrentUserData() async {
+    try {
+      final userData = await _authService.getUserData();
+      if (userData != null) {
         setState(() {
-          _nearbyDonorsCount += 1;
-
-          // Add a simulated donor
-          if (_nearbyDonorsCount <= 12) {
-            _nearbyDonors.add({
-              'name': 'Donor ${_nearbyDonorsCount}',
-              'distance': ((_nearbyDonorsCount * 0.5) + 0.5).toStringAsFixed(1),
-              'bloodGroup': _getRandomBloodGroup(),
-              'lastDonation': '${_nearbyDonorsCount * 15} days ago',
-              'responding': _nearbyDonorsCount % 3 == 0
-                  ? true
-                  : false, // Every 3rd donor is responding
-            });
-          }
+          _currentUserPhone = userData['phoneNumber'] ?? '';
+          _currentUserDistrict = userData['district'] ?? '';
+          _currentUserBloodGroup = userData['bloodGroup'] ?? '';
+          _currentUserName = userData['name'] ?? '';
+          _isLoading = false;
         });
+        
+        // Get current location for distance calculations
+        await _getCurrentLocation();
+        
+        // Start emergency mode and find donors
+        await _activateEmergencyMode();
       } else {
-        timer.cancel();
+        setState(() {
+          _isLoading = false;
+        });
+        _showError('Unable to load user profile. Please try again.');
       }
-    });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      _showError('Error loading user data: $e');
+    }
+  }
+  Future<void> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        print('Location services are disabled.');
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          print('Location permissions are denied');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        print('Location permissions are permanently denied');
+        return;
+      }
+
+      final currentPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      print('Current position: ${currentPosition.latitude}, ${currentPosition.longitude}');
+    } catch (e) {
+      print('Error getting current location: $e');
+    }
+  }Future<void> _activateEmergencyMode() async {
+    try {
+      // Create emergency request document
+      final emergencyRequestData = {
+        'requestedBy': _currentUserPhone,
+        'requesterName': _currentUserName,
+        'bloodGroup': _currentUserBloodGroup,
+        'district': _currentUserDistrict,
+        'urgency': 'emergency',
+        'status': 'active',
+        'createdAt': Timestamp.now(),
+        'respondingDonors': [],
+        'isEmergency': true,
+      };      final emergencyDoc = await FirebaseFirestore.instance
+          .collection('emergency_requests')
+          .add(emergencyRequestData);
+
+      // Find compatible donors in the same district
+      await _findCompatibleDonors();
+
+      // Send notifications to compatible donors
+      await _notifyCompatibleDonors(emergencyDoc.id);
+
+    } catch (e) {
+      _showError('Failed to activate emergency mode: $e');
+    }
   }
 
-  String _getRandomBloodGroup() {
-    final groups = ['A+', 'B+', 'AB+', 'O+', 'A-', 'B-', 'AB-', 'O-'];
-    return groups[DateTime.now().millisecondsSinceEpoch % groups.length];
+  Future<void> _findCompatibleDonors() async {
+    try {
+      // Get compatible blood types
+      final compatibleTypes = _getCompatibleBloodTypes(_currentUserBloodGroup);
+      
+      // Query users in the same district with compatible blood types
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('district', isEqualTo: _currentUserDistrict)
+          .where('bloodGroup', whereIn: compatibleTypes)
+          .limit(20) // Limit to prevent excessive queries
+          .get();
+
+      // Set up real-time listener for donor responses
+      _donorSubscription = FirebaseFirestore.instance
+          .collection('emergency_requests')
+          .where('requestedBy', isEqualTo: _currentUserPhone)
+          .where('status', isEqualTo: 'active')
+          .snapshots()
+          .listen(_onEmergencyRequestUpdate);
+
+      // Process found donors
+      final donors = <Map<String, dynamic>>[];
+      for (final doc in querySnapshot.docs) {
+        final userData = doc.data();
+        // Don't include the requester themselves
+        if (userData['phoneNumber'] != _currentUserPhone) {
+          donors.add({
+            'id': doc.id,
+            'name': userData['name'] ?? 'Unknown',
+            'phone': userData['phoneNumber'] ?? '',
+            'bloodGroup': userData['bloodGroup'] ?? '',
+            'district': userData['district'] ?? '',
+            'gender': userData['gender'] ?? '',
+            'responding': false,
+            'distance': _calculateDistance(), // Simulated distance
+            'lastDonation': 'Available',
+          });
+        }
+      }
+
+      setState(() {
+        _nearbyDonors.clear();
+        _nearbyDonors.addAll(donors);
+      });
+
+    } catch (e) {
+      _showError('Error finding compatible donors: $e');
+    }
   }
 
-  @override
+  void _onEmergencyRequestUpdate(QuerySnapshot snapshot) {
+    if (snapshot.docs.isNotEmpty) {
+      final emergencyData = snapshot.docs.first.data() as Map<String, dynamic>;
+      final respondingDonors = List<Map<String, dynamic>>.from(
+        emergencyData['respondingDonors'] ?? []
+      );
+
+      // Update donor response status
+      setState(() {
+        for (int i = 0; i < _nearbyDonors.length; i++) {
+          final donor = _nearbyDonors[i];
+          final isResponding = respondingDonors.any(
+            (responder) => responder['phone'] == donor['phone']
+          );
+          _nearbyDonors[i]['responding'] = isResponding;
+        }
+      });
+    }
+  }
+
+  Future<void> _notifyCompatibleDonors(String emergencyRequestId) async {
+    try {
+      for (final donor in _nearbyDonors) {
+        // Create notification for each compatible donor
+        final notificationData = {
+          'userPhone': donor['phone'],
+          'type': 'emergency_request',
+          'title': 'EMERGENCY BLOOD REQUEST',
+          'message': 'Urgent: ${_currentUserName} needs ${_currentUserBloodGroup} blood in $_currentUserDistrict. Please respond if you can help!',
+          'createdAt': Timestamp.now(),
+          'isRead': false,
+          'emergencyRequestId': emergencyRequestId,
+          'requesterPhone': _currentUserPhone,
+          'requesterName': _currentUserName,
+          'bloodGroup': _currentUserBloodGroup,
+          'district': _currentUserDistrict,
+          'urgencyLevel': 'emergency',
+        };
+
+        await FirebaseFirestore.instance
+            .collection('notifications')
+            .add(notificationData);
+      }
+    } catch (e) {
+      print('Error sending emergency notifications: $e');
+    }
+  }
+
+  List<String> _getCompatibleBloodTypes(String bloodGroup) {
+    // Define blood compatibility rules for recipients
+    switch (bloodGroup) {
+      case 'A+':
+        return ['A+', 'A-', 'O+', 'O-'];
+      case 'A-':
+        return ['A-', 'O-'];
+      case 'B+':
+        return ['B+', 'B-', 'O+', 'O-'];
+      case 'B-':
+        return ['B-', 'O-'];
+      case 'AB+':
+        return ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+      case 'AB-':
+        return ['A-', 'B-', 'AB-', 'O-'];
+      case 'O+':
+        return ['O+', 'O-'];
+      case 'O-':
+        return ['O-'];
+      default:
+        return ['O-']; // Safest option
+    }
+  }
+  String _calculateDistance() {
+    // Simulate distance calculation
+    // In a real app, you would use location services
+    final distances = ['0.5', '1.2', '2.1', '3.5', '4.8', '6.2', '8.0'];
+    return distances[DateTime.now().millisecond % distances.length];
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+  Future<void> _deactivateEmergencyMode() async {
+    try {
+      // Update emergency request status
+      final emergencyRequests = await FirebaseFirestore.instance
+          .collection('emergency_requests')
+          .where('requestedBy', isEqualTo: _currentUserPhone)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      for (final doc in emergencyRequests.docs) {
+        await doc.reference.update({'status': 'deactivated'});
+      }
+
+      // Cancel subscriptions
+      _donorSubscription?.cancel();
+      _emergencyRequestSubscription?.cancel();
+
+      // Navigate back
+      Navigator.pop(context);
+    } catch (e) {
+      _showError('Error deactivating emergency mode: $e');
+    }
+  }
+
+  Future<void> _callEmergencyServices() async {
+    try {
+      const emergencyNumber = 'tel:108'; // Emergency number in India
+      final uri = Uri.parse(emergencyNumber);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        _showError('Unable to make emergency call');
+      }
+    } catch (e) {
+      _showError('Error calling emergency services: $e');
+    }
+  }  @override
   void dispose() {
     _pulseController.dispose();
-    _donorCountTimer?.cancel();
+    _donorSubscription?.cancel();
+    _emergencyRequestSubscription?.cancel();
     super.dispose();
   }
 
@@ -92,7 +331,26 @@ class _EmergencyModeScreenState extends State<EmergencyModeScreen>
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: Column(
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    color: Colors.red,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading emergency mode...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : Column(
         children: [
           // Red background with pulse animation at the top
           Container(
@@ -172,9 +430,8 @@ class _EmergencyModeScreenState extends State<EmergencyModeScreen>
                         color: Colors.white,
                         size: 20,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '$_nearbyDonorsCount nearby donors found',
+                      const SizedBox(width: 8),                      Text(
+                        '${_nearbyDonors.length} nearby donors found',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -341,11 +598,8 @@ class _EmergencyModeScreenState extends State<EmergencyModeScreen>
               ],
             ),
             child: Column(
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
+              children: [                ElevatedButton(
+                  onPressed: _deactivateEmergencyMode,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
@@ -364,7 +618,7 @@ class _EmergencyModeScreenState extends State<EmergencyModeScreen>
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton(
-                  onPressed: () {},
+                  onPressed: _callEmergencyServices,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.red,
                     minimumSize: const Size(double.infinity, 50),

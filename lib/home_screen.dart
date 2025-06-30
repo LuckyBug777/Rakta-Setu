@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'auth_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'emergency_response_handler.dart';
 // Import only the necessary pages
 import 'blood_availability_screen.dart';
 import 'blood_request_screen.dart';
@@ -84,7 +85,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _loadUserData();
     }
   }
-
   void _loadUserData() async {
     try {
       final userData = await widget.authService.getUserData();
@@ -97,6 +97,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _userRole = userData['role'] ?? 'donor';
           _isLoading = false;
         });
+        
+        // Check for emergency requests after loading user data
+        _checkForEmergencyRequests();
       } else {
         setState(() {
           _isLoading = false;
@@ -108,7 +111,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _isLoading = false;
         _userName = 'User';
       });
-      print('Error loading user data: $e');
+      print('Error loading user data: $e');    }
+  }
+
+  Future<void> _checkForEmergencyRequests() async {
+    // Wait a bit to let the UI settle before showing emergency dialogs
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (mounted) {
+      await EmergencyResponseHandler.checkForActiveEmergencyRequests(context);
     }
   }
 
