@@ -85,6 +85,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _loadUserData();
     }
   }
+
   void _loadUserData() async {
     try {
       final userData = await widget.authService.getUserData();
@@ -97,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _userRole = userData['role'] ?? 'donor';
           _isLoading = false;
         });
-        
+
         // Check for emergency requests after loading user data
         _checkForEmergencyRequests();
       } else {
@@ -111,13 +112,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _isLoading = false;
         _userName = 'User';
       });
-      print('Error loading user data: $e');    }
+      print('Error loading user data: $e');
+    }
   }
 
   Future<void> _checkForEmergencyRequests() async {
     // Wait a bit to let the UI settle before showing emergency dialogs
     await Future.delayed(const Duration(seconds: 2));
-    
+
     if (mounted) {
       await EmergencyResponseHandler.checkForActiveEmergencyRequests(context);
     }

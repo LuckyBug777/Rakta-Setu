@@ -5,9 +5,7 @@ import 'auth_service.dart';
 
 class EmergencyResponseHandler {
   static Future<void> showEmergencyRequestDialog(
-    BuildContext context, 
-    Map<String, dynamic> notificationData
-  ) async {
+      BuildContext context, Map<String, dynamic> notificationData) async {
     final emergencyRequestId = notificationData['emergencyRequestId'];
     final requesterName = notificationData['requesterName'];
     final bloodGroup = notificationData['bloodGroup'];
@@ -84,7 +82,8 @@ class EmergencyResponseHandler {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _respondToEmergency(context, emergencyRequestId, requesterPhone, false);
+              _respondToEmergency(
+                  context, emergencyRequestId, requesterPhone, false);
             },
             child: Text(
               'Cannot Help',
@@ -94,7 +93,8 @@ class EmergencyResponseHandler {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _respondToEmergency(context, emergencyRequestId, requesterPhone, true);
+              _respondToEmergency(
+                  context, emergencyRequestId, requesterPhone, true);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -116,9 +116,10 @@ class EmergencyResponseHandler {
     try {
       final authService = AuthService();
       final userData = await authService.getUserData();
-      
+
       if (userData == null) {
-        _showMessage(context, 'Error: Unable to load your profile', isError: true);
+        _showMessage(context, 'Error: Unable to load your profile',
+            isError: true);
         return;
       }
 
@@ -144,13 +145,12 @@ class EmergencyResponseHandler {
         });
 
         // Create notification for the requester
-        await FirebaseFirestore.instance
-            .collection('notifications')
-            .add({
+        await FirebaseFirestore.instance.collection('notifications').add({
           'userPhone': requesterPhone,
           'type': 'emergency_response',
           'title': 'Emergency Donor Found!',
-          'message': '$donorName ($donorBloodGroup) is available to help with your emergency blood request. Please contact them immediately.',
+          'message':
+              '$donorName ($donorBloodGroup) is available to help with your emergency blood request. Please contact them immediately.',
           'createdAt': Timestamp.now(),
           'isRead': false,
           'emergencyRequestId': emergencyRequestId,
@@ -161,28 +161,27 @@ class EmergencyResponseHandler {
         });
 
         // Create confirmation notification for donor
-        await FirebaseFirestore.instance
-            .collection('notifications')
-            .add({
+        await FirebaseFirestore.instance.collection('notifications').add({
           'userPhone': donorPhone,
           'type': 'emergency_confirmation',
           'title': 'Emergency Response Confirmed',
-          'message': 'Thank you for responding to the emergency! The patient will contact you shortly. Please be ready to donate.',
+          'message':
+              'Thank you for responding to the emergency! The patient will contact you shortly. Please be ready to donate.',
           'createdAt': Timestamp.now(),
           'isRead': false,
           'emergencyRequestId': emergencyRequestId,
           'requesterPhone': requesterPhone,
         });
 
-        _showMessage(context, 'Thank you! Your response has been sent to the patient.');
-        
+        _showMessage(
+            context, 'Thank you! Your response has been sent to the patient.');
+
         // Show contact options
         _showContactOptions(context, requesterPhone);
-        
       } else {
-        _showMessage(context, 'Thank you for your response. We understand you cannot help at this time.');
+        _showMessage(context,
+            'Thank you for your response. We understand you cannot help at this time.');
       }
-
     } catch (e) {
       _showMessage(context, 'Error responding to emergency: $e', isError: true);
     }
@@ -206,7 +205,8 @@ class EmergencyResponseHandler {
               if (await canLaunchUrl(phoneUri)) {
                 await launchUrl(phoneUri);
               } else {
-                _showMessage(context, 'Unable to make phone call', isError: true);
+                _showMessage(context, 'Unable to make phone call',
+                    isError: true);
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
@@ -217,7 +217,8 @@ class EmergencyResponseHandler {
     );
   }
 
-  static void _showMessage(BuildContext context, String message, {bool isError = false}) {
+  static void _showMessage(BuildContext context, String message,
+      {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -228,11 +229,12 @@ class EmergencyResponseHandler {
   }
 
   // Method to check for active emergency requests when app starts
-  static Future<void> checkForActiveEmergencyRequests(BuildContext context) async {
+  static Future<void> checkForActiveEmergencyRequests(
+      BuildContext context) async {
     try {
       final authService = AuthService();
       final userData = await authService.getUserData();
-      
+
       if (userData == null) return;
 
       final userPhone = userData['phoneNumber'] ?? '';
@@ -254,13 +256,11 @@ class EmergencyResponseHandler {
         final data = doc.data();
         if (data['requestedBy'] != userPhone) {
           // Check if user already responded
-          final respondingDonors = List<Map<String, dynamic>>.from(
-            data['respondingDonors'] ?? []
-          );
-          
-          final alreadyResponded = respondingDonors.any(
-            (donor) => donor['phone'] == userPhone
-          );
+          final respondingDonors =
+              List<Map<String, dynamic>>.from(data['respondingDonors'] ?? []);
+
+          final alreadyResponded =
+              respondingDonors.any((donor) => donor['phone'] == userPhone);
 
           if (!alreadyResponded) {
             // Show emergency notification

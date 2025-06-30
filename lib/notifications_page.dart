@@ -412,17 +412,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),          onTap: () async {
+          borderRadius: BorderRadius.circular(16),
+          onTap: () async {
             if (!isRead) {
               _markAsRead(notification['id']);
             }
-            
+
             // Handle emergency request notifications
             if (notificationType == 'emergency_request') {
               await EmergencyResponseHandler.showEmergencyRequestDialog(
-                context, 
-                notification
-              );
+                  context, notification);
             }
           },
           child: Padding(
