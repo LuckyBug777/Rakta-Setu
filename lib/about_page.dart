@@ -115,39 +115,116 @@ class AboutPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(25),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color(0xFFFF6B6B),
-                    Color(0xFFFF3838),
+                    Color(0xFF667eea),
+                    Color(0xFF764ba2),
+                    Color(0xFF6B73FF),
                   ],
+                  stops: [0.0, 0.5, 1.0],
                 ),
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0xFF667eea).withOpacity(0.3),
+                    blurRadius: 15,
+                    offset: Offset(0, 8),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Projectory Solutions',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'We are a passionate team of developers dedicated to creating innovative solutions that make a positive impact on society. Our expertise spans mobile app development, web solutions, and digital transformation.',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                      height: 1.5,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.white,
+                              Colors.grey[50]!,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Image.asset(
+                          'assets/images/pro.png',
+                          height: 35,
+                          width: 35,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Projectory Solutions',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Innovation • Quality • Excellence',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Text(
+                      'We are a passionate team of developers dedicated to creating innovative solutions that make a positive impact on society. Our expertise spans mobile app development, web solutions, and digital transformation.',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white,
+                        height: 1.6,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 25),
                   Row(
                     children: [
                       Expanded(
@@ -156,27 +233,46 @@ class AboutPage extends StatelessWidget {
                               _launchURL('https://projectorysolutions.com'),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                vertical: 12, horizontal: 16),
+                                vertical: 16, horizontal: 20),
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white,
+                                  Colors.grey[50]!,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 10,
+                                  offset: Offset(0, 5),
+                                ),
+                              ],
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(
-                                  Icons.language,
-                                  color: Color(0xFFFF3838),
-                                  size: 18,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFF667eea).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.language,
+                                    color: Color(0xFF667eea),
+                                    size: 20,
+                                  ),
                                 ),
-                                SizedBox(width: 6),
-                                Flexible(
+                                const SizedBox(width: 10),
+                                const Flexible(
                                   child: Text(
                                     'Visit Website',
                                     style: TextStyle(
-                                      color: Color(0xFFFF3838),
+                                      color: Color(0xFF667eea),
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+                                      fontSize: 15,
                                     ),
                                   ),
                                 ),
@@ -185,33 +281,52 @@ class AboutPage extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 15),
                       Expanded(
                         child: GestureDetector(
                           onTap: () => _launchURL('tel:8105287105'),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                vertical: 12, horizontal: 16),
+                                vertical: 16, horizontal: 20),
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white,
+                                  Colors.grey[50]!,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 10,
+                                  offset: Offset(0, 5),
+                                ),
+                              ],
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(
-                                  Icons.phone,
-                                  color: Color(0xFFFF3838),
-                                  size: 18,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFF764ba2).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.phone,
+                                    color: Color(0xFF764ba2),
+                                    size: 20,
+                                  ),
                                 ),
-                                SizedBox(width: 6),
-                                Flexible(
+                                const SizedBox(width: 10),
+                                const Flexible(
                                   child: Text(
                                     'Call Us',
                                     style: TextStyle(
-                                      color: Color(0xFFFF3838),
+                                      color: Color(0xFF764ba2),
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+                                      fontSize: 15,
                                     ),
                                   ),
                                 ),
