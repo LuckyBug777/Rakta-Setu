@@ -57,7 +57,7 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     _initializeAnimations();
-    _generateBloodParticles();
+    // _generateBloodParticles();
     _startAnimationSequence();
     _checkAuthenticationStatus();
   }
@@ -196,33 +196,61 @@ class _SplashScreenState extends State<SplashScreen>
         _statusText = 'Checking authentication...';
       });
 
+      print('🌟 SplashScreen: Starting authentication check...');
+
       // Initialize auth service and check for existing login
       final isLoggedIn = await widget.authService.isUserLoggedIn();
+      print('🌟 SplashScreen: isUserLoggedIn result: $isLoggedIn');
 
       if (isLoggedIn) {
         setState(() {
           _statusText = 'Verifying user data...';
         });
 
+        print('🌟 SplashScreen: User is logged in, checking user data...');
+
         // Get user data to verify it exists
         final userData = await widget.authService.getUserData();
+        print('🌟 SplashScreen: Retrieved user data: $userData');
 
         if (userData != null) {
           setState(() {
             _authCheckCompleted = true;
             _statusText = 'Welcome back, ${userData['name'] ?? 'User'}!';
           });
+          print('🌟 SplashScreen: User data found, proceeding to home');
           _checkIfReadyToNavigate();
         } else {
-          // User login state exists but no user data - redirect to login
-          await widget.authService.clearLoginState();
+          print('🌟 SplashScreen: No user data found, trying Firestore...');
+          // Try to fetch from Firestore if local data doesn't exist
+          final phoneNumber = await widget.authService.getStoredPhoneNumber();
+          print('🌟 SplashScreen: Phone number: $phoneNumber');
+          if (phoneNumber != null) {
+            final firestoreData =
+                await widget.authService.getUserFromFirestore(phoneNumber);
+            print('🌟 SplashScreen: Firestore data: $firestoreData');
+            if (firestoreData != null) {
+              await widget.authService.saveUserData(firestoreData);
+              setState(() {
+                _authCheckCompleted = true;
+                _statusText =
+                    'Welcome back, ${firestoreData['name'] ?? 'User'}!';
+              });
+              _checkIfReadyToNavigate();
+              return;
+            }
+          }
+
+          // Even if no user data, if login state exists, proceed to home
+          print('🌟 SplashScreen: No user data found, but login state exists');
           setState(() {
             _authCheckCompleted = true;
-            _statusText = 'Please sign in to continue';
+            _statusText = 'Welcome back!';
           });
           _checkIfReadyToNavigate();
         }
       } else {
+        print('🌟 SplashScreen: User is not logged in');
         setState(() {
           _authCheckCompleted = true;
           _statusText = 'Please sign in to continue';
@@ -230,6 +258,7 @@ class _SplashScreenState extends State<SplashScreen>
         _checkIfReadyToNavigate();
       }
     } catch (e) {
+      print('🌟 SplashScreen: Error during authentication check: $e');
       // Handle authentication check error
       setState(() {
         _authCheckCompleted = true;
@@ -251,9 +280,8 @@ class _SplashScreenState extends State<SplashScreen>
     try {
       // Check final auth status
       final isLoggedIn = await widget.authService.isUserLoggedIn();
-      final userData = await widget.authService.getUserData();
 
-      if (isLoggedIn && userData != null) {
+      if (isLoggedIn) {
         setState(() {
           _statusText = 'Loading your dashboard...';
         });
@@ -307,6 +335,11 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Get screen size for responsive design
+    final Size screenSize = MediaQuery.of(context).size;
+    final bool isSmallScreen = screenSize.height < 700;
+    final double bottomPadding = isSmallScreen ? 140 : 80;
+
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -340,281 +373,298 @@ class _SplashScreenState extends State<SplashScreen>
               },
             ),
 
-            // Main content
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Enhanced logo section
-                  AnimatedBuilder(
-                    animation: Listenable.merge([
-                      _logoScaleAnimation,
-                      _logoOpacityAnimation,
-                      _pulseAnimation
-                    ]),
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: _logoOpacityAnimation.value,
-                        child: Transform.scale(
-                          scale:
-                              _logoScaleAnimation.value * _pulseAnimation.value,
-                          child: Container(
-                            width: 140,
-                            height: 140,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(25),
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      const Color(0xFFFF3838).withOpacity(0.3),
-                                  blurRadius: 20,
-                                  spreadRadius: 5,
-                                  offset: const Offset(0, 8),
-                                ),
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                              border: Border.all(
-                                color: const Color(0xFFFF3838).withOpacity(0.2),
-                                width: 2,
-                              ),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(23),
-                              child: Image.asset(
-                                'assets/images/rakta_setu_logo.png',
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return const Icon(
-                                    Icons.bloodtype,
-                                    size: 70,
-                                    color: Color(0xFFFF3838),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+            // Main content with responsive layout
+            SafeArea(
+              child: SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: screenSize.height -
+                        MediaQuery.of(context).padding.top -
+                        bottomPadding,
                   ),
-
-                  const SizedBox(height: 40),
-
-                  // Enhanced app name with shimmer effect
-                  AnimatedBuilder(
-                    animation: Listenable.merge([
-                      _textOpacityAnimation,
-                      _textSlideAnimation,
-                      _shimmerAnimation
-                    ]),
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: _textOpacityAnimation.value,
-                        child: Transform.translate(
-                          offset: Offset(0, _textSlideAnimation.value),
-                          child: ShaderMask(
-                            shaderCallback: (bounds) {
-                              return LinearGradient(
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                                colors: const [
-                                  Color(0xFF00FF41), // Bright matrix green
-                                  Color(0xFF00CC33), // Vibrant green
-                                  Color(0xFF00FF41), // Bright matrix green
-                                ],
-                                stops: [
-                                  (_shimmerAnimation.value - 0.3)
-                                      .clamp(0.0, 1.0),
-                                  _shimmerAnimation.value.clamp(0.0, 1.0),
-                                  (_shimmerAnimation.value + 0.3)
-                                      .clamp(0.0, 1.0),
-                                ],
-                              ).createShader(bounds);
-                            },
-                            child: const Text(
-                              'Rakta Setu',
-                              style: TextStyle(
-                                fontSize: 38,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                letterSpacing: 3,
-                                shadows: [
-                                  Shadow(
-                                    offset: Offset(2, 2),
-                                    blurRadius: 4,
-                                    color: Color(0x40000000),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 15),
-
-                  // Subtitle
-                  AnimatedBuilder(
-                    animation: _textOpacityAnimation,
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: _textOpacityAnimation.value * 0.9,
-                        child: Transform.translate(
-                          offset: Offset(0, _textSlideAnimation.value * 0.7),
-                          child: const Text(
-                            'Bridging Lives Through Blood Donation',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 60),
-
-                  // Enhanced quote section
-                  AnimatedBuilder(
-                    animation: _quoteAnimation,
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: _quoteAnimation.value,
-                        child: Transform.translate(
-                          offset: Offset(0, 30 * (1 - _quoteAnimation.value)),
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 30),
-                            padding: const EdgeInsets.all(25),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.white.withOpacity(0.95),
-                                  Colors.white.withOpacity(0.85),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      const Color(0xFFFF3838).withOpacity(0.2),
-                                  blurRadius: 15,
-                                  spreadRadius: 2,
-                                  offset: const Offset(0, 8),
-                                ),
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                              border: Border.all(
-                                color: const Color(0xFFFF3838).withOpacity(0.1),
-                                width: 1,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                const Icon(
-                                  Icons.format_quote,
-                                  color: Color(0xFFFF3838),
-                                  size: 30,
-                                ),
-                                const SizedBox(height: 10),
-                                const Text(
-                                  'Every drop counts, every donation saves a life. Blood bank management ensures hope flows where it\'s needed most.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontStyle: FontStyle.italic,
-                                    color: Color(0xFF2D3748),
-                                    height: 1.6,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Container(
-                                  width: 50,
-                                  height: 3,
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [
-                                        Color(0xFFFF3838),
-                                        Color(0xFFFF6B6B)
-                                      ],
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Enhanced logo section
+                      AnimatedBuilder(
+                        animation: Listenable.merge([
+                          _logoScaleAnimation,
+                          _logoOpacityAnimation,
+                          _pulseAnimation
+                        ]),
+                        builder: (context, child) {
+                          return Opacity(
+                            opacity: _logoOpacityAnimation.value,
+                            child: Transform.scale(
+                              scale: _logoScaleAnimation.value *
+                                  _pulseAnimation.value,
+                              child: Container(
+                                width: isSmallScreen ? 120 : 140,
+                                height: isSmallScreen ? 120 : 140,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(25),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFFF3838)
+                                          .withOpacity(0.3),
+                                      blurRadius: 20,
+                                      spreadRadius: 5,
+                                      offset: const Offset(0, 8),
                                     ),
-                                    borderRadius: BorderRadius.circular(2),
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                  border: Border.all(
+                                    color: const Color(0xFFFF3838)
+                                        .withOpacity(0.2),
+                                    width: 2,
                                   ),
                                 ),
-                              ],
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(23),
+                                  child: Image.asset(
+                                    'assets/images/rakta_setu.png',
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Icon(
+                                        Icons.bloodtype,
+                                        size: 70,
+                                        color: Color(0xFFFF3838),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 40),
 
-            // Enhanced loading indicator with dynamic status
+                      // Enhanced app name with shimmer effect
+                      AnimatedBuilder(
+                        animation: Listenable.merge([
+                          _textOpacityAnimation,
+                          _textSlideAnimation,
+                          _shimmerAnimation
+                        ]),
+                        builder: (context, child) {
+                          return Opacity(
+                            opacity: _textOpacityAnimation.value,
+                            child: Transform.translate(
+                              offset: Offset(0, _textSlideAnimation.value),
+                              child: ShaderMask(
+                                shaderCallback: (bounds) {
+                                  return LinearGradient(
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                    colors: const [
+                                      Color(0xFF00FF41), // Bright matrix green
+                                      Color(0xFF00CC33), // Vibrant green
+                                      Color(0xFF00FF41), // Bright matrix green
+                                    ],
+                                    stops: [
+                                      (_shimmerAnimation.value - 0.3)
+                                          .clamp(0.0, 1.0),
+                                      _shimmerAnimation.value.clamp(0.0, 1.0),
+                                      (_shimmerAnimation.value + 0.3)
+                                          .clamp(0.0, 1.0),
+                                    ],
+                                  ).createShader(bounds);
+                                },
+                                child: Text(
+                                  'Rakta Setu',
+                                  style: TextStyle(
+                                    fontSize: isSmallScreen ? 32 : 38,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    letterSpacing: 3,
+                                    shadows: const [
+                                      Shadow(
+                                        offset: Offset(2, 2),
+                                        blurRadius: 4,
+                                        color: Color(0x40000000),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 15),
+
+                      // Subtitle
+                      AnimatedBuilder(
+                        animation: _textOpacityAnimation,
+                        builder: (context, child) {
+                          return Opacity(
+                            opacity: _textOpacityAnimation.value * 0.9,
+                            child: Transform.translate(
+                              offset:
+                                  Offset(0, _textSlideAnimation.value * 0.7),
+                              child: const Text(
+                                'Bridging Lives Through Blood Donation',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      SizedBox(height: isSmallScreen ? 40 : 60),
+
+                      // Enhanced quote section
+                      AnimatedBuilder(
+                        animation: _quoteAnimation,
+                        builder: (context, child) {
+                          return Opacity(
+                            opacity: _quoteAnimation.value,
+                            child: Transform.translate(
+                              offset:
+                                  Offset(0, 30 * (1 - _quoteAnimation.value)),
+                              child: Container(
+                                margin: EdgeInsets.symmetric(
+                                    horizontal: isSmallScreen ? 20 : 30),
+                                padding:
+                                    EdgeInsets.all(isSmallScreen ? 20 : 25),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Colors.white.withOpacity(0.95),
+                                      Colors.white.withOpacity(0.85),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFFF3838)
+                                          .withOpacity(0.2),
+                                      blurRadius: 15,
+                                      spreadRadius: 2,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                  border: Border.all(
+                                    color: const Color(0xFFFF3838)
+                                        .withOpacity(0.1),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    const Icon(
+                                      Icons.format_quote,
+                                      color: Color(0xFFFF3838),
+                                      size: 30,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'Every drop counts, every donation saves a life. Blood bank management ensures hope flows where it\'s needed most.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: isSmallScreen ? 14 : 16,
+                                        fontStyle: FontStyle.italic,
+                                        color: const Color(0xFF2D3748),
+                                        height: 1.6,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Container(
+                                      width: 50,
+                                      height: 3,
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFFF3838),
+                                            Color(0xFFFF6B6B)
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      // Add extra space after quote section for better separation
+                      SizedBox(height: isSmallScreen ? 50 : 30),
+                    ],
+                  ),
+                ),
+              ),
+            ), // Enhanced loading indicator with dynamic status
             Positioned(
-              bottom: 80,
+              bottom: bottomPadding,
               left: 0,
               right: 0,
-              child: AnimatedBuilder(
-                animation: _textOpacityAnimation,
-                builder: (context, child) {
-                  return Opacity(
-                    opacity: _textOpacityAnimation.value,
-                    child: Column(
-                      children: [
-                        if (!_authCheckCompleted)
-                          const SizedBox(
-                            width: 30,
-                            height: 30,
-                            child: CircularProgressIndicator(
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                              strokeWidth: 3,
+              child: Padding(
+                padding:
+                    EdgeInsets.symmetric(horizontal: isSmallScreen ? 20 : 0),
+                child: AnimatedBuilder(
+                  animation: _textOpacityAnimation,
+                  builder: (context, child) {
+                    return Opacity(
+                      opacity: _textOpacityAnimation.value,
+                      child: Column(
+                        children: [
+                          if (!_authCheckCompleted)
+                            const SizedBox(
+                              width: 30,
+                              height: 30,
+                              child: CircularProgressIndicator(
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                                strokeWidth: 3,
+                              ),
+                            ),
+                          const SizedBox(height: 15),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            child: Text(
+                              _statusText,
+                              key: ValueKey(_statusText),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: isSmallScreen ? 12 : 14,
+                                fontWeight: FontWeight.w500,
+                                shadows: const [
+                                  Shadow(
+                                    offset: Offset(1, 1),
+                                    blurRadius: 2,
+                                    color: Colors.black26,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        const SizedBox(height: 15),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: Text(
-                            _statusText,
-                            key: ValueKey(_statusText),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              shadows: [
-                                Shadow(
-                                  offset: Offset(1, 1),
-                                  blurRadius: 2,
-                                  color: Colors.black26,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ],

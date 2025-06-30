@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'auth_service.dart';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 // Import only the necessary pages
 import 'blood_availability_screen.dart';
 import 'blood_request_screen.dart';
+import 'blood_requests_list_screen.dart';
 import 'donation_scheduling_screen.dart';
 import 'emergency_mode_screen.dart';
 import 'profile_screen.dart';
+import 'about_page.dart';
+import 'accepted_donors_page.dart';
+import 'blood_tips_page.dart';
+import 'donation_history_page.dart';
+import 'blood_bank_finder_page.dart';
+import 'notifications_page.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -26,38 +33,62 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late AnimationController _slideController;
-
   String _userName = '';
-  String _userBloodGroup = '';
-  String _userDistrict = '';
+  // ignore: unused_field
+  String _userBloodGroup =
+      ''; // Used for data loading, may be displayed in future UI updates
+  // ignore: unused_field
+  String _userDistrict =
+      ''; // Used for data loading, may be displayed in future UI updates
   String _userRole = 'donor'; // donor, recipient, admin
   bool _isLoading = true;
   bool _emergencyMode = false;
-  bool _isDarkMode = false;
 
   @override
   void initState() {
     super.initState();
-    // Initialize animations
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
-
     _slideController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-
     _fadeController.forward();
     _slideController.forward();
+    _fetchAndStoreUserData();
+  }
 
-    _loadUserData();
+  /// Fetch user data from Firestore, store locally, then load for UI
+  void _fetchAndStoreUserData() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final phone = await widget.authService.getStoredPhoneNumber();
+      if (phone != null) {
+        final firestoreData =
+            await widget.authService.getUserFromFirestore(phone);
+        print('Fetched from Firestore: $firestoreData');
+        if (firestoreData != null) {
+          await widget.authService.saveUserData(firestoreData);
+          _loadUserData();
+          return;
+        }
+      }
+      // fallback: load whatever is in local storage
+      _loadUserData();
+    } catch (e) {
+      print('Error fetching/storing user data: $e');
+      _loadUserData();
+    }
   }
 
   void _loadUserData() async {
     try {
       final userData = await widget.authService.getUserData();
+      print('Loaded from local: $userData');
       if (userData != null) {
         setState(() {
           _userName = userData['name'] ?? 'User';
@@ -85,7 +116,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() {
       _emergencyMode = !_emergencyMode;
     });
-
     if (_emergencyMode) {
       _navigateToPage(const EmergencyModeScreen());
     }
@@ -111,25 +141,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _toggleDarkMode() {
-    setState(() {
-      _isDarkMode = !_isDarkMode;
-    });
-
-    // Show confirmation toast
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _isDarkMode ? 'Dark mode activated' : 'Light mode activated',
-        ),
-        backgroundColor: _isDarkMode ? Colors.grey[800] : Colors.blue,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-
-    // In a real app, this would change the app theme
-  }
-
   @override
   void dispose() {
     _fadeController.dispose();
@@ -146,34 +157,71 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         statusBarIconBrightness: Brightness.dark,
       ),
     );
-
     return Scaffold(
-      backgroundColor: _isDarkMode ? const Color(0xFF121212) : Colors.white,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
-        title: Image.asset(
-          'assets/images/rakta_setu_logo.png',
-          height: 40,
+        title: Row(
+          children: [
+            Image.asset(
+              'assets/images/rakta_setu_logo.png',
+              height: 40,
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Rakta Setu',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color:
+                    Color(0xFF00FF41), // Matrix green color like splash screen
+                letterSpacing: 1.5,
+              ),
+            ),
+          ],
         ),
         actions: [
-          // Dark Mode Toggle
+          // Notifications Icon
           IconButton(
-            icon: Icon(
-              _isDarkMode ? Icons.light_mode : Icons.dark_mode,
-              color: _isDarkMode ? Colors.white : const Color(0xFF2D3748),
+            icon: Stack(
+              children: [
+                const Icon(Icons.notifications_outlined,
+                    color: Color(0xFFFF3838)),
+                // You can add a badge here later for unread notifications count
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 8,
+                      minHeight: 8,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            onPressed: _toggleDarkMode,
-            tooltip: 'Toggle Theme',
+            onPressed: () => _navigateToPage(
+                NotificationsPage(authService: widget.authService)),
+            tooltip: 'Notifications',
           ),
-          // Logout Button
+          // Profile Icon
           IconButton(
-            icon: Icon(
-              Icons.logout,
-              color: _isDarkMode ? Colors.white : const Color(0xFF2D3748),
-            ),
-            onPressed: widget.onLogout,
-            tooltip: 'Logout',
+            icon: const Icon(Icons.person, color: Color(0xFFFF3838)),
+            onPressed: () =>
+                _navigateToPage(ProfileScreen(onLogout: widget.onLogout)),
+            tooltip: 'My Profile',
+          ),
+          // About Icon
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Color(0xFFFF3838)),
+            onPressed: () => _navigateToPage(AboutPage()),
+            tooltip: 'About Rakta Setu',
           ),
         ],
       ),
@@ -202,20 +250,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               'Welcome back,',
                               style: TextStyle(
                                 fontSize: 16,
-                                color: _isDarkMode
-                                    ? Colors.grey[400]
-                                    : Colors.grey[700],
+                                color: Colors.grey[700],
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               _userName,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
-                                color: _isDarkMode
-                                    ? Colors.white
-                                    : const Color(0xFF2D3748),
+                                color: Color(0xFF2D3748),
                               ),
                             ),
                           ],
@@ -227,9 +271,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               'Emergency',
                               style: TextStyle(
                                 fontSize: 14,
-                                color: _isDarkMode
-                                    ? Colors.grey[400]
-                                    : Colors.grey[700],
+                                color: Colors.grey[700],
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -293,109 +335,315 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ],
                         ),
                       ),
-
-                    const SizedBox(height: 30),
-
-                    // Profile Card
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFFFF6B6B),
-                            Color(0xFFFF3838),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFFF3838).withOpacity(0.3),
-                            blurRadius: 15,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Your Blood Type',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                      color: Colors.white70,
+                    const SizedBox(
+                        height:
+                            30), // Blood Requests Container (show only for donors) or Accepted Donors (for recipients)
+                    if (_userRole == 'recipient')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: FutureBuilder<int>(
+                          future: _getAcceptedDonorCount(),
+                          builder: (context, snapshot) {
+                            int notifyCount = snapshot.data ?? 0;
+                            return GestureDetector(
+                              onTap: () =>
+                                  _navigateToPage(AcceptedDonorsPage()),
+                              child: Container(
+                                width: double.infinity,
+                                constraints:
+                                    const BoxConstraints(minHeight: 70),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 18, horizontal: 16),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      const Color(0xFF38A169),
+                                      const Color(0xFF2ECC71)
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(18),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF38A169)
+                                          .withOpacity(0.18),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 6),
                                     ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _userBloodGroup,
-                                    style: const TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    Stack(
+                                      children: [
+                                        const Icon(Icons.people,
+                                            color: Colors.white, size: 32),
+                                        if (notifyCount > 0)
+                                          Positioned(
+                                            right: 0,
+                                            top: 0,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: const BoxDecoration(
+                                                color: Colors.white,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Text(
+                                                notifyCount.toString(),
+                                                style: const TextStyle(
+                                                  color: Color(0xFF38A169),
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                              GestureDetector(
-                                onTap: () =>
-                                    _navigateToPage(const ProfileScreen()),
-                                child: Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(
-                                    Icons.person_outline,
-                                    color: Colors.white,
-                                    size: 24,
-                                  ),
+                                    const SizedBox(width: 14),
+                                    const Expanded(
+                                      child: Text(
+                                        'Accepted Donors',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    const Tooltip(
+                                      message:
+                                          'View donors who accepted your request',
+                                      child: Icon(
+                                          Icons.arrow_forward_ios_rounded,
+                                          color: Colors.white,
+                                          size: 22),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              _buildProfileInfoItem(
-                                title: _userDistrict,
-                                icon: Icons.location_on_outlined,
+                            );
+                          },
+                        ),
+                      )
+                    else if (_userRole == 'donor')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: FutureBuilder<List<Map<String, dynamic>>>(
+                          future: _getLatestBloodRequests(),
+                          builder: (context, snapshot) {
+                            final requests = snapshot.data ?? [];
+                            return GestureDetector(
+                              onTap: () => _navigateToPage(
+                                  const BloodRequestsListScreen()),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      const Color(0xFFFF6B6B),
+                                      const Color(0xFFFF3838)
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(18),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFFF6B6B)
+                                          .withOpacity(0.18),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Stack(
+                                          children: [
+                                            const Icon(Icons.volunteer_activism,
+                                                color: Colors.white, size: 28),
+                                            if (requests.isNotEmpty)
+                                              Positioned(
+                                                right: 0,
+                                                top: 0,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.all(3),
+                                                  decoration:
+                                                      const BoxDecoration(
+                                                    color: Colors.white,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: Text(
+                                                    requests.length.toString(),
+                                                    style: const TextStyle(
+                                                      color: Color(0xFFFF3838),
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 10,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Expanded(
+                                          child: Text(
+                                            'Latest Blood Requests',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        const Icon(
+                                          Icons.arrow_forward_ios,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    if (requests.isEmpty)
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: const Text(
+                                          'No active blood requests at the moment',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      )
+                                    else
+                                      Column(
+                                        children:
+                                            requests.take(2).map((request) {
+                                          return Container(
+                                            margin: const EdgeInsets.only(
+                                                bottom: 8),
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  Colors.white.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                // Blood group circle
+                                                Container(
+                                                  width: 32,
+                                                  height: 32,
+                                                  decoration:
+                                                      const BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                    color: Colors.white,
+                                                  ),
+                                                  child: Center(
+                                                    child: Text(
+                                                      request['bloodGroup'] ??
+                                                          '',
+                                                      style: const TextStyle(
+                                                        color:
+                                                            Color(0xFFFF3838),
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        request['patientName'] ??
+                                                            'Patient',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          fontSize: 14,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        '${request['hospital'] ?? ''} • ${request['urgency'] ?? ''}',
+                                                        style: TextStyle(
+                                                          color: Colors.white
+                                                              .withOpacity(0.8),
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white
+                                                        .withOpacity(0.2),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            12),
+                                                  ),
+                                                  child: Text(
+                                                    '${request['requiredUnits'] ?? 0} units',
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(width: 16),
-                              _buildProfileInfoItem(
-                                title: _userRole.toUpperCase(),
-                                icon: Icons.local_hospital_outlined,
-                              ),
-                            ],
-                          ),
-                        ],
+                            );
+                          },
+                        ),
                       ),
-                    ),
 
                     const SizedBox(height: 30),
 
                     Text(
                       'Quick Actions',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: _isDarkMode
-                            ? Colors.white
-                            : const Color(0xFF2D3748),
+                        color: Color(0xFF2D3748),
                       ),
                     ),
 
                     const SizedBox(height: 20),
-
                     GridView.count(
                       crossAxisCount: 2,
                       shrinkWrap: true,
@@ -426,147 +674,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               _navigateToPage(const DonationSchedulingScreen()),
                         ),
                         _buildActionCard(
-                          title: 'My Profile',
-                          icon: Icons.person_outline,
+                          title: 'Donation History',
+                          icon: Icons.history,
                           color: Colors.blue,
-                          onTap: () => _navigateToPage(const ProfileScreen()),
+                          onTap: () => _navigateToPage(DonationHistoryPage(
+                              authService: widget.authService)),
+                        ),
+                        _buildActionCard(
+                          title: 'Blood Bank Finder',
+                          icon: Icons.local_hospital,
+                          color: Colors.teal,
+                          onTap: () =>
+                              _navigateToPage(const BloodBankFinderPage()),
+                        ),
+                        _buildActionCard(
+                          title: 'Health Tips',
+                          icon: Icons.health_and_safety,
+                          color: Colors.purple,
+                          onTap: () => _navigateToPage(const BloodTipsPage()),
                         ),
                       ],
-                    ),
-
-                    const SizedBox(height: 30),
-
-                    Text(
-                      'Emergency Features',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: _isDarkMode
-                            ? Colors.white
-                            : const Color(0xFF2D3748),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    GestureDetector(
-                      onTap: _toggleEmergencyMode,
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: _emergencyMode
-                              ? Colors.red.withOpacity(0.15)
-                              : _isDarkMode
-                                  ? Colors.grey[800]
-                                  : Colors.grey[100],
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(
-                            color: _emergencyMode
-                                ? Colors.red
-                                : _isDarkMode
-                                    ? Colors.grey[700]!
-                                    : Colors.grey[300]!,
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              height: 60,
-                              width: 60,
-                              decoration: BoxDecoration(
-                                color: _emergencyMode
-                                    ? Colors.red.withOpacity(0.2)
-                                    : _isDarkMode
-                                        ? Colors.grey[700]
-                                        : Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.emergency,
-                                color: _emergencyMode
-                                    ? Colors.red
-                                    : _isDarkMode
-                                        ? Colors.grey[300]
-                                        : Colors.grey[800],
-                                size: 30,
-                              ),
-                            ),
-                            const SizedBox(width: 20),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _emergencyMode
-                                        ? 'Emergency Mode Active'
-                                        : 'Emergency Blood Request',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: _emergencyMode
-                                          ? Colors.red
-                                          : _isDarkMode
-                                              ? Colors.white
-                                              : Colors.grey[800],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    _emergencyMode
-                                        ? 'Tap to deactivate emergency mode'
-                                        : 'Tap to activate emergency mode',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: _emergencyMode
-                                          ? Colors.red.withOpacity(0.8)
-                                          : _isDarkMode
-                                              ? Colors.grey[400]
-                                              : Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(
-                              Icons.arrow_forward_ios,
-                              color: _emergencyMode
-                                  ? Colors.red
-                                  : _isDarkMode
-                                      ? Colors.grey[400]
-                                      : Colors.grey[600],
-                              size: 16,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 30),
-
-                    Container(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: widget.onLogout,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              _isDarkMode ? Colors.grey[800] : Colors.grey[200],
-                          foregroundColor:
-                              _isDarkMode ? Colors.white : Colors.grey[800],
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Logout',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
                     ),
 
                     const SizedBox(height: 30),
@@ -616,13 +743,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: _isDarkMode ? Colors.grey[800] : Colors.white,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
-              color: _isDarkMode
-                  ? Colors.black.withOpacity(0.3)
-                  : Colors.grey.withOpacity(0.1),
+              color: Colors.grey.withOpacity(0.1),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -647,15 +772,76 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: _isDarkMode ? Colors.white : const Color(0xFF2D3748),
+                color: Color(0xFF2D3748),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<int> _getActiveRequestCount() async {
+    // For donors: count all active (pending) blood requests
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('blood_requests')
+          .where('status', isEqualTo: 'pending')
+          .get();
+      return query.docs.length;
+    } catch (e) {
+      print('Error getting active request count: $e');
+      return 0;
+    }
+  }
+
+  Future<int> _getAcceptedDonorCount() async {
+    // For recipients: count all donors who accepted their request
+    try {
+      final userData = await widget.authService.getUserData();
+      final phone = userData != null ? userData['phoneNumber'] ?? '' : '';
+      if (phone.isEmpty) return 0;
+
+      final query = await FirebaseFirestore.instance
+          .collection('blood_requests')
+          .where('requestedBy', isEqualTo: phone)
+          .orderBy('createdAt', descending: true)
+          .get();
+      int count = 0;
+      for (var doc in query.docs) {
+        final donorDetails = (doc['donorDetails'] ?? []) as List;
+        count += donorDetails.length;
+      }
+      return count;
+    } catch (e) {
+      print('Error getting accepted donor count: $e');
+      return 0;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getLatestBloodRequests() async {
+    try {
+      final userData = await widget.authService.getUserData();
+      final userPhone = userData?['phoneNumber'] ?? '';
+
+      final query = await FirebaseFirestore.instance
+          .collection('blood_requests')
+          .where('status', isEqualTo: 'pending')
+          .orderBy('createdAt', descending: true)
+          .limit(2)
+          .get();
+
+      return query.docs
+          .map((doc) => {'id': doc.id, ...doc.data() as Map<String, dynamic>})
+          .where((req) =>
+              req['requestedBy'] != userPhone) // Exclude user's own requests
+          .toList();
+    } catch (e) {
+      print('Error getting latest blood requests: $e');
+      return [];
+    }
   }
 }

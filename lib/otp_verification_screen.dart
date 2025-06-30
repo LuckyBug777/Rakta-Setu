@@ -3,7 +3,6 @@ import 'package:pin_code_fields/pin_code_fields.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'dart:async';
 import 'auth_service.dart';
-import 'home_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
@@ -113,15 +112,21 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
         verificationId: widget.verificationId,
         smsCode: _otpCode,
       );
-
       if (userCredential != null && userCredential.user != null) {
         // OTP verification successful
         if (!widget.isLogin && widget.userData != null) {
-          // Save user data for registration
+          // Registration flow - save user data to both Firestore and local storage
           try {
+            // Save to Firestore
+            await _authService.createOrUpdateUser(
+              phoneNumber: widget.phoneNumber,
+              userData: widget.userData!,
+            );
+
+            // Save to local storage
             await _authService.saveUserData(widget.userData!);
 
-            // Also save login state for persistence
+            // Save login state for persistence
             await _authService.saveLoginState(
               phoneNumber: widget.phoneNumber,
               rememberMe: true,
@@ -137,54 +142,86 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
             return;
           }
         } else {
-          // Update last login for existing users and ensure login state is saved
+          // Login flow - handle existing users
           await _authService.updateLastLogin();
 
-          // Fetch user data to store with login state
-          final userData =
-              await _authService.getUserFromFirestore(widget.phoneNumber);
+          try {
+            // Try to fetch user data from Firestore first
+            print(
+                '🔐 OTP: Attempting to fetch user data from Firestore for ${widget.phoneNumber}');
+            final firestoreUserData =
+                await _authService.getUserFromFirestore(widget.phoneNumber);
+            print('🔐 OTP: Firestore data received: $firestoreUserData');
 
-          // Save login state with remember me
-          await _authService.saveLoginState(
-            phoneNumber: widget.phoneNumber,
-            rememberMe: true,
-            additionalData: userData,
-          );
+            Map<String, dynamic>? userDataToSave = firestoreUserData;
 
-          // Also cache user data locally
-          if (userData != null) {
-            await _authService.saveUserData(userData);          }
+            // If no Firestore data exists, try to get from local storage
+            if (firestoreUserData == null) {
+              print('🔐 OTP: No Firestore data, checking local storage...');
+              final localUserData = await _authService.getUserData();
+              userDataToSave = localUserData;
+              print('🔐 OTP: Local data: $localUserData');
+            }
 
-          _showToast('Login successful!');
+            // Always save login state regardless of user data availability
+            await _authService.saveLoginState(
+              phoneNumber: widget.phoneNumber,
+              rememberMe: true,
+              additionalData: userDataToSave,
+            );
+
+            // Cache user data locally if we have it
+            if (userDataToSave != null) {
+              print(
+                  '🔐 OTP: Saving user data to local storage: $userDataToSave');
+              await _authService.saveUserData(userDataToSave);
+            } else {
+              print('🔐 OTP: No user data found, creating minimal data');
+              // Create minimal user data if none exists
+              final minimalUserData = {
+                'phoneNumber': widget.phoneNumber,
+                'name': 'User',
+                'loginTime': DateTime.now().toIso8601String(),
+              };
+              await _authService.saveUserData(minimalUserData);
+            }
+
+            _showToast('Login successful!');
+          } catch (e) {
+            print('🔐 OTP: Error in login flow: $e');
+            // Even if data fetching fails, save login state with minimal data
+            final minimalUserData = {
+              'phoneNumber': widget.phoneNumber,
+              'name': 'User',
+              'loginTime': DateTime.now().toIso8601String(),
+            };
+
+            await _authService.saveLoginState(
+              phoneNumber: widget.phoneNumber,
+              rememberMe: true,
+              additionalData: minimalUserData,
+            );
+
+            await _authService.saveUserData(minimalUserData);
+
+            _showToast('Login successful!');
+            print('Warning: Could not fetch user data, using minimal data: $e');
+          }
         }
-
         setState(() {
           _isLoading = false;
         });
-          // Use a slight delay before navigating to ensure messages are displayed
+
+        // Use a slight delay before navigating to ensure messages are displayed
         Future.delayed(const Duration(milliseconds: 800), () {
           // Check if widget is still mounted before using context
-          if (!mounted) return;
-          
-          // Properly call the callback to notify parent
+          if (!mounted)
+            return; // Call the callback to notify parent if provided
           if (widget.onVerificationComplete != null) {
             widget.onVerificationComplete!();
           } else {
-            // Fallback navigation if callback not provided
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(
-                builder: (context) => HomeScreen(
-                  onLogout: () async {
-                    await _authService.signOut();
-                    if (mounted) {
-                      Navigator.of(context).pushReplacementNamed('/login');
-                    }
-                  },
-                  authService: _authService,
-                ),
-              ),
-              (route) => false, // Remove all previous routes
-            );
+            // Fallback: If no callback provided, pop back to previous screen
+            Navigator.of(context).pop();
           }
         });
       }
@@ -399,7 +436,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                   ),
 
                   const SizedBox(height: 8),
-
                   Text(
                     _formatPhoneNumber(widget.phoneNumber),
                     style: const TextStyle(
@@ -410,9 +446,16 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                     ),
                   ),
 
-                  SizedBox(height: isSmallScreen ? 30 : 60),                  // OTP Input Container
+                  SizedBox(height: isSmallScreen ? 30 : 60),
+
+                  // OTP Input Container with responsive padding
                   Container(
-                    padding: EdgeInsets.all(isSmallScreen ? 15 : 25),
+                    margin: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 12 : 0),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isSmallScreen ? 8 : 25,
+                      vertical: isSmallScreen ? 15 : 25,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(25),
@@ -436,45 +479,68 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                           ),
                         ),
 
-                        SizedBox(height: isSmallScreen ? 20 : 30),
+                        SizedBox(
+                            height: isSmallScreen
+                                ? 20
+                                : 30), // PIN Code Fields with responsive sizing
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            // Calculate optimal field width based on available space
+                            final availableWidth = constraints.maxWidth;
+                            final spacing = 8.0; // Space between fields
+                            final totalSpacing =
+                                spacing * 5; // 5 spaces between 6 fields
+                            final fieldWidth =
+                                (availableWidth - totalSpacing) / 6;
 
-                        // PIN Code Fields
-                        PinCodeTextField(
-                          appContext: context,
-                          length: 6,
-                          controller: _otpController,
-                          animationType: AnimationType.fade,                          pinTheme: PinTheme(
-                            shape: PinCodeFieldShape.box,
-                            borderRadius: BorderRadius.circular(12),
-                            fieldHeight: isSmallScreen ? 40 : 55,
-                            fieldWidth: isSmallScreen ? 35 : 45,
-                            activeFillColor: const Color(0xFFF7FAFC),
-                            inactiveFillColor: const Color(0xFFF7FAFC),
-                            selectedFillColor:
-                                const Color(0xFFFF3838).withOpacity(0.1),
-                            activeColor: const Color(0xFFFF3838),
-                            inactiveColor: const Color(0xFFE2E8F0),
-                            selectedColor: const Color(0xFFFF3838),
-                            borderWidth: 2,
-                          ),
-                          enableActiveFill: true,
-                          keyboardType: TextInputType.number,
-                          textStyle: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF2D3748),
-                          ),
-                          onCompleted: (value) {
-                            setState(() {
-                              _otpCode = value;
-                            });
+                            // Ensure minimum and maximum field sizes
+                            final optimalFieldWidth = fieldWidth.clamp(
+                              isSmallScreen ? 28.0 : 35.0, // minimum
+                              isSmallScreen ? 40.0 : 50.0, // maximum
+                            );
+
+                            return PinCodeTextField(
+                              appContext: context,
+                              length: 6,
+                              controller: _otpController,
+                              animationType: AnimationType.fade,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              pinTheme: PinTheme(
+                                shape: PinCodeFieldShape.box,
+                                borderRadius: BorderRadius.circular(
+                                    isSmallScreen ? 8 : 12),
+                                fieldHeight: isSmallScreen ? 35 : 55,
+                                fieldWidth: optimalFieldWidth,
+                                activeFillColor: const Color(0xFFF7FAFC),
+                                inactiveFillColor: const Color(0xFFF7FAFC),
+                                selectedFillColor:
+                                    const Color(0xFFFF3838).withOpacity(0.1),
+                                activeColor: const Color(0xFFFF3838),
+                                inactiveColor: const Color(0xFFE2E8F0),
+                                selectedColor: const Color(0xFFFF3838),
+                                borderWidth: isSmallScreen ? 1.5 : 2,
+                              ),
+                              enableActiveFill: true,
+                              keyboardType: TextInputType.number,
+                              textStyle: TextStyle(
+                                fontSize: isSmallScreen ? 14 : 20,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF2D3748),
+                              ),
+                              onCompleted: (value) {
+                                setState(() {
+                                  _otpCode = value;
+                                });
+                              },
+                              onChanged: (value) {
+                                setState(() {
+                                  _otpCode = value;
+                                });
+                              },
+                            );
                           },
-                          onChanged: (value) {
-                            setState(() {
-                              _otpCode = value;
-                            });
-                          },
-                        ),                        SizedBox(height: isSmallScreen ? 15 : 25),
+                        ),
+                        SizedBox(height: isSmallScreen ? 15 : 25),
 
                         // Verify Button
                         Container(
@@ -603,7 +669,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                     ],
                   ),
 
-                  const SizedBox(height: 20),                  // Help Text
+                  const SizedBox(height: 20), // Help Text
                   Container(
                     padding: const EdgeInsets.all(15),
                     margin: const EdgeInsets.only(top: 15),

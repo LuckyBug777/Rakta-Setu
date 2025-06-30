@@ -156,13 +156,35 @@ class _RegisterScreenState extends State<RegisterScreen>
       verificationCompleted: (PhoneAuthCredential credential) async {
         // Auto-verification completed
         try {
-          final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+          final userCredential =
+              await FirebaseAuth.instance.signInWithCredential(credential);
           if (userCredential.user != null) {
+            // Registration successful, save user data to Firestore and local storage
+            final userData = {
+              'name': _nameController.text.trim(),
+              'gender': _selectedGender!,
+              'bloodGroup': _selectedBloodGroup!,
+              'district': _selectedDistrict!,
+              'phoneNumber': phoneNumber,
+            };
+
+            await _authService.createOrUpdateUser(
+              phoneNumber: phoneNumber,
+              userData: userData,
+            );
+
+            await _authService.saveUserData(userData);
+
+            await _authService.saveLoginState(
+              phoneNumber: phoneNumber,
+              rememberMe: true,
+              additionalData: userData,
+            );
+
             setState(() {
               _isLoading = false;
             });
-            // Registration successful, save user data to Firestore
-            await _saveUserToFirestore(phoneNumber);
+
             if (widget.onRegistrationSuccess != null) {
               widget.onRegistrationSuccess!();
             }
@@ -234,6 +256,7 @@ class _RegisterScreenState extends State<RegisterScreen>
       throw Exception('Failed to save user data');
     }
   }
+
   void _showToast(String message) {
     Fluttertoast.showToast(
       msg: message,

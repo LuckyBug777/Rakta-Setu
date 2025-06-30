@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'auth_service.dart';
 import 'utils/responsive_dimensions.dart';
 
 class BloodRequestScreen extends StatefulWidget {
@@ -493,34 +495,105 @@ class _BloodRequestScreenState extends State<BloodRequestScreen> {
     );
   }
 
-  void _submitRequest() {
-    // This would normally connect to a backend service
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _isEmergency
-              ? 'Emergency blood request submitted! Nearby donors are being notified.'
-              : 'Blood request submitted successfully!',
+  void _submitRequest() async {
+    try {
+      // Get user data
+      final userData = await AuthService().getUserData();
+      final userPhone = userData?['phoneNumber'] ?? '';
+      final userName = userData?['name'] ?? 'Anonymous';
+
+      if (userPhone.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User information not found. Please login again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Create blood request document
+      final requestData = {
+        'patientName': _patientNameController.text,
+        'patientAge': int.tryParse(_patientAgeController.text) ?? 0,
+        'bloodGroup': _selectedBloodGroup,
+        'hospital': _hospitalController.text,
+        'requiredUnits': int.tryParse(_requiredUnitsController.text) ?? 1,
+        'urgency': _selectedUrgency,
+        'contactNumber': _contactNumberController.text,
+        'address': _addressController.text,
+        'additionalNotes': _additionalNotesController.text,
+        'isEmergency': _isEmergency,
+        'requestedBy': userPhone,
+        'requesterName': userName,
+        'status': 'pending',
+        'createdAt': Timestamp.now(),
+      };
+
+      // Save to Firestore
+      final docRef = await FirebaseFirestore.instance
+          .collection('blood_requests')
+          .add(requestData);
+
+      print('Blood request saved with ID: ${docRef.id}');
+
+      // Create notification for the requester
+      final notificationData = {
+        'userPhone': userPhone,
+        'type': _isEmergency ? 'emergency_request' : 'blood_request',
+        'title': _isEmergency
+            ? 'Emergency Request Submitted'
+            : 'Blood Request Submitted',
+        'message': _isEmergency
+            ? 'Your emergency request for $_selectedBloodGroup blood has been submitted. Nearby donors are being notified.'
+            : 'Your request for $_selectedBloodGroup blood has been submitted successfully.',
+        'createdAt': Timestamp.now(),
+        'isRead': false,
+        'relatedRequestId': docRef.id,
+      };
+
+      await FirebaseFirestore.instance
+          .collection('notifications')
+          .add(notificationData);
+
+      print('Notification created for blood request');
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isEmergency
+                ? 'Emergency blood request submitted! Nearby donors are being notified.'
+                : 'Blood request submitted successfully!',
+          ),
+          backgroundColor: _isEmergency ? Colors.red : Colors.green,
+          duration: const Duration(seconds: 4),
         ),
-        backgroundColor: _isEmergency ? Colors.red : Colors.green,
-        duration: const Duration(seconds: 4),
-      ),
-    );
+      );
 
-    // Reset form after successful submission
-    _formKey.currentState!.reset();
-    _patientNameController.clear();
-    _patientAgeController.clear();
-    _hospitalController.clear();
-    _requiredUnitsController.clear();
-    _contactNumberController.clear();
-    _addressController.clear();
-    _additionalNotesController.clear();
+      // Reset form after successful submission
+      _formKey.currentState!.reset();
+      _patientNameController.clear();
+      _patientAgeController.clear();
+      _hospitalController.clear();
+      _requiredUnitsController.clear();
+      _contactNumberController.clear();
+      _addressController.clear();
+      _additionalNotesController.clear();
 
-    setState(() {
-      _selectedBloodGroup = 'A+';
-      _selectedUrgency = 'Normal';
-      _isEmergency = false;
-    });
+      setState(() {
+        _selectedBloodGroup = 'A+';
+        _selectedUrgency = 'Normal';
+        _isEmergency = false;
+      });
+    } catch (e) {
+      print('Error submitting blood request: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to submit blood request. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

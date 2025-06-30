@@ -63,6 +63,7 @@ class AuthService {
     Map<String, dynamic>? additionalData,
   }) async {
     try {
+      print('Saving login state for $phoneNumber (rememberMe: $rememberMe)');
       final prefs = await _preferences;
 
       if (rememberMe) {
@@ -77,8 +78,11 @@ class AuthService {
         await prefs.setString(_loginStateKey, json.encode(loginData));
         await prefs.setBool(_rememberMeKey, true);
         await prefs.setString(_lastLoginKey, DateTime.now().toIso8601String());
+
+        print('Login state saved successfully');
       } else {
         await prefs.setBool(_rememberMeKey, false);
+        print('Remember me set to false');
       }
     } catch (e) {
       print('Error saving login state: $e');
@@ -102,13 +106,14 @@ class AuthService {
   }
 
   // Check if user is currently logged in (including persistent login)
-  Future<bool>  isUserLoggedIn() async {
+  Future<bool> isUserLoggedIn() async {
     try {
       // Initialize Firebase first if needed
       await Firebase.initializeApp();
 
       // Check Firebase auth state first
       if (_auth.currentUser != null) {
+        print('User logged in via Firebase: ${_auth.currentUser!.uid}');
         // Update last login time to keep session fresh
         await updateLastLogin();
         return true;
@@ -119,6 +124,9 @@ class AuthService {
       final isRemembered = prefs.getBool(_rememberMeKey) ?? false;
       final loginState = prefs.getString(_loginStateKey);
 
+      print(
+          'Checking persistent login: isRemembered=$isRemembered, hasLoginState=${loginState != null}');
+
       if (isRemembered && loginState != null) {
         final loginData = json.decode(loginState);
         final lastLoginTime = DateTime.parse(loginData['timestamp']);
@@ -126,15 +134,18 @@ class AuthService {
 
         // Check if login is still valid (within 30 days)
         if (now.difference(lastLoginTime).inDays < 30) {
+          print('Persistent login is still valid');
           // Update last login time to keep session fresh
           await updateLastLogin();
           return true;
         } else {
+          print('Persistent login expired, clearing state');
           // Login expired, clear stored data
           await clearLoginState();
         }
       }
 
+      print('User is not logged in');
       return false;
     } catch (e) {
       print('Error checking login status: $e');
@@ -145,17 +156,22 @@ class AuthService {
   // Get stored login phone number
   Future<String?> getStoredPhoneNumber() async {
     try {
+      print('🔑 AuthService: Getting stored phone number...');
       final prefs = await _preferences;
       final loginState = prefs.getString(_loginStateKey);
+      print('🔑 AuthService: Login state for phone number: $loginState');
 
       if (loginState != null) {
         final loginData = json.decode(loginState);
-        return loginData['phoneNumber'];
+        final phoneNumber = loginData['phoneNumber'];
+        print('🔑 AuthService: Found phone number: $phoneNumber');
+        return phoneNumber;
       }
 
+      print('🔑 AuthService: No phone number found in login state');
       return null;
     } catch (e) {
-      print('Error getting stored phone number: $e');
+      print('🔑 AuthService: Error getting stored phone number: $e');
       return null;
     }
   }
@@ -238,32 +254,96 @@ class AuthService {
     } catch (e) {
       print('Error updating last login: $e');
     }
-  }
+  } // Save user data locally
 
-  // Save user data locally
   Future<void> saveUserData(Map<String, dynamic> userData) async {
     try {
+      print('🔑 AuthService: Saving user data to SharedPreferences: $userData');
       final prefs = await _preferences;
-      await prefs.setString(_userDataKey, json.encode(userData));
+
+      // Convert Firestore Timestamps to strings before encoding
+      final cleanUserData = <String, dynamic>{};
+      userData.forEach((key, value) {
+        if (value is Timestamp) {
+          // Convert Firestore Timestamp to ISO string
+          cleanUserData[key] = value.toDate().toIso8601String();
+        } else {
+          cleanUserData[key] = value;
+        }
+      });
+
+      print('🔑 AuthService: Cleaned user data for saving: $cleanUserData');
+      final userDataJson = json.encode(cleanUserData);
+      await prefs.setString(_userDataKey, userDataJson);
+      print('🔑 AuthService: User data saved successfully');
+
+      // Verify the data was saved
+      final savedData = prefs.getString(_userDataKey);
+      print('🔑 AuthService: Verification - saved data: $savedData');
     } catch (e) {
-      print('Error saving user data: $e');
+      print('🔑 AuthService: Error saving user data: $e');
       throw Exception('Failed to save user data');
     }
-  }
+  } // Get stored user data
 
-  // Get stored user data
   Future<Map<String, dynamic>?> getUserData() async {
     try {
+      print('🔑 AuthService: Getting user data from SharedPreferences...');
       final prefs = await _preferences;
+
+      // First, try to get from dedicated user data key
       final userDataJson = prefs.getString(_userDataKey);
+      print(
+          '🔑 AuthService: Raw user data JSON from user_data key: $userDataJson');
 
       if (userDataJson != null) {
-        return json.decode(userDataJson);
+        final userData = json.decode(userDataJson);
+        print(
+            '🔑 AuthService: Decoded user data from user_data key: $userData');
+        return userData;
       }
 
+      // If no dedicated user data, try to extract from login state
+      print('🔑 AuthService: No user data found, checking login state...');
+      final loginStateJson = prefs.getString(_loginStateKey);
+      print('🔑 AuthService: Raw login state JSON: $loginStateJson');
+
+      if (loginStateJson != null) {
+        final loginState = json.decode(loginStateJson);
+        print('🔑 AuthService: Decoded login state: $loginState');
+
+        // Extract user data fields from login state
+        if (loginState is Map<String, dynamic>) {
+          final userData = <String, dynamic>{};
+
+          // Copy relevant user data fields from login state
+          if (loginState.containsKey('name'))
+            userData['name'] = loginState['name'];
+          if (loginState.containsKey('bloodGroup'))
+            userData['bloodGroup'] = loginState['bloodGroup'];
+          if (loginState.containsKey('district'))
+            userData['district'] = loginState['district'];
+          if (loginState.containsKey('gender'))
+            userData['gender'] = loginState['gender'];
+          if (loginState.containsKey('phoneNumber'))
+            userData['phoneNumber'] = loginState['phoneNumber'];
+          if (loginState.containsKey('role'))
+            userData['role'] = loginState['role'];
+
+          if (userData.isNotEmpty) {
+            print(
+                '🔑 AuthService: Extracted user data from login state: $userData');
+            // Save to dedicated user data key for future use
+            await saveUserData(userData);
+            return userData;
+          }
+        }
+      }
+
+      print('🔑 AuthService: No user data found in SharedPreferences');
       return null;
     } catch (e) {
-      print('Error getting user data: $e');
+      print('🔑 AuthService: Error getting user data: $e');
       return null;
     }
   }
@@ -485,15 +565,21 @@ class AuthService {
 // Optional: Get user data from Firestore
   Future<Map<String, dynamic>?> getUserFromFirestore(String phoneNumber) async {
     try {
+      print(
+          '🔥 AuthService: Fetching user data from Firestore for $phoneNumber');
       final doc = await _firestore.collection('users').doc(phoneNumber).get();
+      print('🔥 AuthService: Firestore document exists: ${doc.exists}');
 
       if (doc.exists) {
-        return doc.data();
+        final data = doc.data();
+        print('🔥 AuthService: Firestore data: $data');
+        return data;
       }
 
+      print('🔥 AuthService: No document found in Firestore for $phoneNumber');
       return null;
     } catch (e) {
-      print('Error getting user from Firestore: $e');
+      print('🔥 AuthService: Error getting user from Firestore: $e');
       return null;
     }
   }
@@ -516,8 +602,48 @@ class AuthService {
     }
   }
 
+  // Delete user from Firestore
+  Future<void> deleteUserFromFirestore(String phoneNumber) async {
+    try {
+      await _firestore.collection('users').doc(phoneNumber).delete();
+      print('User deleted from Firestore: $phoneNumber');
+    } catch (e) {
+      print('Error deleting user from Firestore: $e');
+      throw Exception('Failed to delete user data from Firestore');
+    }
+  }
+
   // Dispose resources
   void dispose() {
     _prefs = null;
+  }
+
+  // Debug method to check all stored preferences
+  Future<void> debugAllPreferences() async {
+    try {
+      print('🔍 DEBUG: Checking all SharedPreferences...');
+      final prefs = await _preferences;
+
+      final loginState = prefs.getString(_loginStateKey);
+      final userData = prefs.getString(_userDataKey);
+      final rememberMe = prefs.getBool(_rememberMeKey);
+      final lastLogin = prefs.getString(_lastLoginKey);
+
+      print('🔍 DEBUG: login_state: $loginState');
+      print('🔍 DEBUG: user_data: $userData');
+      print('🔍 DEBUG: remember_me: $rememberMe');
+      print('🔍 DEBUG: last_login: $lastLogin');
+
+      // Get all keys
+      final allKeys = prefs.getKeys();
+      print('🔍 DEBUG: All SharedPreferences keys: $allKeys');
+
+      for (final key in allKeys) {
+        final value = prefs.get(key);
+        print('🔍 DEBUG: $key = $value');
+      }
+    } catch (e) {
+      print('🔍 DEBUG: Error checking preferences: $e');
+    }
   }
 }
