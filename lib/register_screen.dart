@@ -147,14 +147,17 @@ class _RegisterScreenState extends State<RegisterScreen>
       setState(() {
         _isLoading = false;
       });
-      _showToast('Phone number already registered. Please login instead.');
+
+      // Show dialog asking if they want to login instead
+      _showExistingUserDialog(phoneNumber);
       return;
     }
 
+    // Proceed with new user registration
     await _authService.sendOTP(
       phoneNumber: phoneNumber,
       verificationCompleted: (PhoneAuthCredential credential) async {
-        // Auto-verification completed
+        // Auto-verification completed for new registration
         try {
           final userCredential =
               await FirebaseAuth.instance.signInWithCredential(credential);
@@ -206,13 +209,13 @@ class _RegisterScreenState extends State<RegisterScreen>
         setState(() {
           _isLoading = false;
         });
-        Navigator.push(
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => OTPVerificationScreen(
               phoneNumber: phoneNumber,
               verificationId: verificationId,
-              isLogin: false,
+              isLogin: false, // This is a registration attempt
               userData: {
                 'name': _nameController.text.trim(),
                 'gender': _selectedGender!,
@@ -266,6 +269,156 @@ class _RegisterScreenState extends State<RegisterScreen>
       backgroundColor: const Color(0xFFFF3838),
       textColor: Colors.white,
       fontSize: 16.0,
+    );
+  }
+
+  void _showExistingUserDialog(String phoneNumber) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                color: Color(0xFFFF3838),
+                size: 28,
+              ),
+              SizedBox(width: 12),
+              Text(
+                'Account Found',
+                style: TextStyle(
+                  color: Color(0xFF2D3748),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'This phone number is already registered. Would you like to login instead?',
+            style: TextStyle(
+              color: Color(0xFF4A5568),
+              fontSize: 16,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Color(0xFF718096),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _proceedWithLogin(phoneNumber);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF3838),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'Login',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _proceedWithLogin(String phoneNumber) async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    await _authService.sendOTP(
+      phoneNumber: phoneNumber,
+      verificationCompleted: (PhoneAuthCredential credential) async {
+        // Auto-verification completed for login
+        try {
+          final userCredential =
+              await FirebaseAuth.instance.signInWithCredential(credential);
+          if (userCredential.user != null) {
+            // Get user data from Firestore
+            final userData =
+                await _authService.getUserFromFirestore(phoneNumber);
+
+            if (userData != null) {
+              await _authService.saveUserData(userData);
+              await _authService.saveLoginState(
+                phoneNumber: phoneNumber,
+                rememberMe: true,
+                additionalData: userData,
+              );
+
+              setState(() {
+                _isLoading = false;
+              });
+
+              if (widget.onRegistrationSuccess != null) {
+                widget.onRegistrationSuccess!();
+              }
+            } else {
+              setState(() {
+                _isLoading = false;
+              });
+              _showToast('Login failed: User data not found');
+            }
+          }
+        } catch (e) {
+          setState(() {
+            _isLoading = false;
+          });
+          _showToast('Login failed: ${e.toString()}');
+        }
+      },
+      verificationFailed: (FirebaseAuthException error) {
+        setState(() {
+          _isLoading = false;
+        });
+        _showToast('Verification failed: ${error.message ?? 'Unknown error'}');
+      },
+      codeSent: (String verificationId, int? resendToken) {
+        setState(() {
+          _isLoading = false;
+        });
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => OTPVerificationScreen(
+              phoneNumber: phoneNumber,
+              verificationId: verificationId,
+              isLogin: true, // This is a login attempt
+              userData: null, // No new user data for login
+              onVerificationComplete: () {
+                if (widget.onRegistrationSuccess != null) {
+                  widget.onRegistrationSuccess!();
+                }
+              },
+            ),
+          ),
+        );
+      },
+      codeAutoRetrievalTimeout: (String verificationId) {
+        print('Auto-retrieval timeout for verification ID: $verificationId');
+      },
     );
   }
 

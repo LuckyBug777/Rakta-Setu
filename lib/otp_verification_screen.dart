@@ -215,9 +215,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
         // Use a slight delay before navigating to ensure messages are displayed
         Future.delayed(const Duration(milliseconds: 800), () {
           // Check if widget is still mounted before using context
-          if (!mounted)
-            return; // Call the callback to notify parent if provided
+          if (!mounted) return;
+
+          // Call the callback to notify parent if provided
           if (widget.onVerificationComplete != null) {
+            // Navigate back to root and call callback to trigger state change
+            Navigator.of(context).popUntil((route) => route.isFirst);
             widget.onVerificationComplete!();
           } else {
             // Fallback: If no callback provided, pop back to previous screen

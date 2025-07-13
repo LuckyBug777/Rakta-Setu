@@ -93,15 +93,58 @@ class _LoginScreenState extends State<LoginScreen>
 
     final phoneNumber = '+91${_phoneController.text.trim()}';
 
+    // Check if user exists in the database
+    final userExists = await widget.authService.userExists(phoneNumber);
+    if (!userExists) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Show dialog asking if they want to register instead
+      _showNewUserDialog(phoneNumber);
+      return;
+    }
+
+    // User exists, proceed with login OTP
     try {
       await widget.authService.sendOTP(
         phoneNumber: phoneNumber,
-        verificationCompleted: (PhoneAuthCredential credential) {
-          // Auto-verification completed (rarely happens)
-          setState(() {
-            _isLoading = false;
-          });
-          widget.onLoginSuccess();
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          // Auto-verification completed for existing user login
+          try {
+            final userCredential =
+                await FirebaseAuth.instance.signInWithCredential(credential);
+            if (userCredential.user != null) {
+              // Get user data from Firestore and save locally
+              final userData =
+                  await widget.authService.getUserFromFirestore(phoneNumber);
+
+              if (userData != null) {
+                await widget.authService.saveUserData(userData);
+                await widget.authService.saveLoginState(
+                  phoneNumber: phoneNumber,
+                  rememberMe: true,
+                  additionalData: userData,
+                );
+
+                setState(() {
+                  _isLoading = false;
+                });
+
+                widget.onLoginSuccess();
+              } else {
+                setState(() {
+                  _isLoading = false;
+                });
+                _showToast('Login failed: User data not found');
+              }
+            }
+          } catch (e) {
+            setState(() {
+              _isLoading = false;
+            });
+            _showToast('Login failed: ${e.toString()}');
+          }
         },
         verificationFailed: (FirebaseAuthException e) {
           setState(() {
@@ -125,13 +168,14 @@ class _LoginScreenState extends State<LoginScreen>
             _isLoading = false;
           });
 
-          Navigator.push(
+          Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (context) => OTPVerificationScreen(
                 phoneNumber: phoneNumber,
                 verificationId: verificationId,
-                isLogin: true,
+                isLogin: true, // This is a login attempt for existing user
+                userData: null, // No new user data for login
                 onVerificationComplete: () {
                   widget.onLoginSuccess();
                 },
@@ -161,6 +205,88 @@ class _LoginScreenState extends State<LoginScreen>
       backgroundColor: const Color(0xFFFF3838),
       textColor: Colors.white,
       fontSize: 16.0,
+    );
+  }
+
+  void _showNewUserDialog(String phoneNumber) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Row(
+            children: [
+              Icon(
+                Icons.person_add_outlined,
+                color: Color(0xFFFF3838),
+                size: 28,
+              ),
+              SizedBox(width: 12),
+              Text(
+                'New User',
+                style: TextStyle(
+                  color: Color(0xFF2D3748),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'This phone number is not registered yet. Would you like to create a new account?',
+            style: TextStyle(
+              color: Color(0xFF4A5568),
+              fontSize: 16,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Color(0xFF718096),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _proceedWithRegistration();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF3838),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'Register',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _proceedWithRegistration() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RegisterScreen(
+          onRegistrationSuccess: widget.onLoginSuccess,
+        ),
+      ),
     );
   }
 

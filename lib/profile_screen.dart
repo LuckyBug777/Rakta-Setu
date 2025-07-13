@@ -155,6 +155,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) {
       // Use the callback if provided, otherwise pop back
       if (widget.onLogout != null) {
+        // Navigate back to root and call callback to trigger state change
+        Navigator.of(context).popUntil((route) => route.isFirst);
         widget.onLogout!();
       } else {
         Navigator.of(context).pop();
@@ -231,6 +233,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         // Navigate to login screen and clear all previous routes
         if (widget.onLogout != null) {
+          // Navigate back to root and call callback to trigger state change
+          Navigator.of(context).popUntil((route) => route.isFirst);
           widget.onLogout!();
         } else {
           Navigator.of(context).pop();
